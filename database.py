@@ -22,7 +22,8 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         full_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL
+        email TEXT UNIQUE NOT NULL,
+        telegram_id INTEGER
     )
     """)
 
@@ -127,6 +128,16 @@ def find_employee_by_lastname(last_name: str):
     return cursor.fetchone()
 
 
+def set_employee_telegram(employee_id: int, telegram_id: int):
+    cursor.execute("UPDATE employees SET telegram_id=? WHERE id=?", (telegram_id, employee_id))
+    conn.commit()
+
+
+def get_employee_by_telegram(telegram_id: int):
+    cursor.execute("SELECT * FROM employees WHERE telegram_id=?", (telegram_id,))
+    return cursor.fetchone()
+
+
 # --- TASKS ---
 def count_active_tasks() -> int:
     cursor.execute("SELECT COUNT(*) AS c FROM tasks WHERE status='active'")
@@ -157,6 +168,11 @@ def cancel_task(task_id: int):
     conn.commit()
 
 
+def complete_task(task_id: int):
+    cursor.execute("UPDATE tasks SET status='done' WHERE id=?", (task_id,))
+    conn.commit()
+
+
 def get_active_tasks():
     cursor.execute("SELECT * FROM tasks WHERE status='active' ORDER BY id DESC")
     return cursor.fetchall()
@@ -177,6 +193,12 @@ def get_task(task_id: int):
     return cursor.fetchone()
 
 
+def get_task_creator(task_id: int):
+    cursor.execute("SELECT created_by FROM tasks WHERE id=?", (task_id,))
+    row = cursor.fetchone()
+    return row["created_by"] if row else None
+
+
 def get_task_emails(task_id: int) -> list[str]:
     cursor.execute("""
         SELECT e.email
@@ -186,3 +208,26 @@ def get_task_emails(task_id: int) -> list[str]:
     """, (task_id,))
     rows = cursor.fetchall()
     return [r["email"] for r in rows]
+
+
+def get_task_assignee_telegram_ids(task_id: int) -> list[int]:
+    cursor.execute("""
+        SELECT e.telegram_id
+        FROM task_assignees ta
+        JOIN employees e ON e.id = ta.employee_id
+        WHERE ta.task_id=? AND e.telegram_id IS NOT NULL
+    """, (task_id,))
+    rows = cursor.fetchall()
+    return [r["telegram_id"] for r in rows]
+
+
+def get_employee_tasks(telegram_id: int):
+    cursor.execute("""
+        SELECT t.*
+        FROM tasks t
+        JOIN task_assignees ta ON ta.task_id = t.id
+        JOIN employees e ON e.id = ta.employee_id
+        WHERE e.telegram_id = ? AND t.status='active'
+        ORDER BY t.id DESC
+    """, (telegram_id,))
+    return cursor.fetchall()
